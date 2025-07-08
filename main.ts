@@ -1,134 +1,102 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting, Modal, Notice } from 'obsidian';
+import { FindReplaceModal } from './FindReplaceModal'; // 我们将创建这个文件
 
-// Remember to rename these classes and interfaces!
-
-interface MyPluginSettings {
-	mySetting: string;
-}
-
-const DEFAULT_SETTINGS: MyPluginSettings = {
-	mySetting: 'default'
-}
-
-export default class MyPlugin extends Plugin {
-	settings: MyPluginSettings;
+export default class FindReplaceInFolderPlugin extends Plugin {
 
 	async onload() {
-		await this.loadSettings();
-
-		// This creates an icon in the left ribbon.
-		const ribbonIconEl = this.addRibbonIcon('dice', 'Sample Plugin', (evt: MouseEvent) => {
-			// Called when the user clicks the icon.
-			new Notice('This is a notice!');
+		// 在左侧功能区添加一个图标
+		this.addRibbonIcon('file-search-2', '批量查找替换', (evt: MouseEvent) => {
+			this.openFindReplaceModal();
 		});
-		// Perform additional things with the ribbon
-		ribbonIconEl.addClass('my-plugin-ribbon-class');
 
-		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
-		const statusBarItemEl = this.addStatusBarItem();
-		statusBarItemEl.setText('Status Bar Text');
-
-		// This adds a simple command that can be triggered anywhere
+		// 添加一个命令，可以通过 Ctrl/Cmd + P 调用
 		this.addCommand({
-			id: 'open-sample-modal-simple',
-			name: 'Open sample modal (simple)',
+			id: 'open-find-replace-modal',
+			name: '对文件夹进行批量查找替换',
 			callback: () => {
-				new SampleModal(this.app).open();
+				this.openFindReplaceModal();
 			}
 		});
-		// This adds an editor command that can perform some operation on the current editor instance
-		this.addCommand({
-			id: 'sample-editor-command',
-			name: 'Sample editor command',
-			editorCallback: (editor: Editor, view: MarkdownView) => {
-				console.log(editor.getSelection());
-				editor.replaceSelection('Sample Editor Command');
-			}
-		});
-		// This adds a complex command that can check whether the current state of the app allows execution of the command
-		this.addCommand({
-			id: 'open-sample-modal-complex',
-			name: 'Open sample modal (complex)',
-			checkCallback: (checking: boolean) => {
-				// Conditions to check
-				const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (markdownView) {
-					// If checking is true, we're simply "checking" if the command can be run.
-					// If checking is false, then we want to actually perform the operation.
-					if (!checking) {
-						new SampleModal(this.app).open();
-					}
-
-					// This command will only show up in Command Palette when the check function returns true
-					return true;
-				}
-			}
-		});
-
-		// This adds a settings tab so the user can configure various aspects of the plugin
-		this.addSettingTab(new SampleSettingTab(this.app, this));
-
-		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
-		// Using this function will automatically remove the event listener when this plugin is disabled.
-		this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
-			console.log('click', evt);
-		});
-
-		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
-		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
 	}
 
 	onunload() {
-
+		// 插件卸载时需要清理的资源
 	}
 
-	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-	}
+    openFindReplaceModal() {
+        new FindReplaceModal(this.app, (result) => {
+            // 这是当用户在 Modal 中点击 "替换" 按钮后执行的回调函数
+            this.performReplacement(result.folder, result.find, result.replace, result.caseSensitive, result.useRegex);
+        }).open();
+    }
 
-	async saveSettings() {
-		await this.saveData(this.settings);
-	}
-}
+    async performReplacement(folderPath: string, searchTerm: string, replaceTerm: string, caseSensitive: boolean, useRegex: boolean) {
+        if (!searchTerm) {
+            new Notice("查找内容不能为空！");
+            return;
+        }
 
-class SampleModal extends Modal {
-	constructor(app: App) {
-		super(app);
-	}
+        new Notice("正在开始批量替换...", 3000);
 
-	onOpen() {
-		const {contentEl} = this;
-		contentEl.setText('Woah!');
-	}
+        const allMarkdownFiles = this.app.vault.getMarkdownFiles();
+        let filesToProcess;
 
-	onClose() {
-		const {contentEl} = this;
-		contentEl.empty();
-	}
-}
+        if (folderPath === "/") { // 根目录
+            filesToProcess = allMarkdownFiles;
+        } else {
+            filesToProcess = allMarkdownFiles.filter(file => file.path.startsWith(folderPath + '/'));
+        }
 
-class SampleSettingTab extends PluginSettingTab {
-	plugin: MyPlugin;
+        if (filesToProcess.length === 0) {
+            new Notice(`在文件夹 "${folderPath}" 中未找到任何 Markdown 文件。`);
+            return;
+        }
 
-	constructor(app: App, plugin: MyPlugin) {
-		super(app, plugin);
-		this.plugin = plugin;
-	}
+        let modifiedFileCount = 0;
+        let searchRegex: RegExp;
 
-	display(): void {
-		const {containerEl} = this;
+        try {
+            if (useRegex) {
+                // 如果使用正则，构建正则表达式
+                // 'g' for global, 'i' for case-insensitive
+                const flags = 'g' + (caseSensitive ? '' : 'i');
+                searchRegex = new RegExp(searchTerm, flags);
+            }
+        } catch (e) {
+            new Notice("无效的正则表达式: " + e.message);
+            return;
+        }
 
-		containerEl.empty();
 
-		new Setting(containerEl)
-			.setName('Setting #1')
-			.setDesc('It\'s a secret')
-			.addText(text => text
-				.setPlaceholder('Enter your secret')
-				.setValue(this.plugin.settings.mySetting)
-				.onChange(async (value) => {
-					this.plugin.settings.mySetting = value;
-					await this.plugin.saveSettings();
-				}));
-	}
+        for (const file of filesToProcess) {
+            try {
+                const originalContent = await this.app.vault.read(file);
+                let newContent: string;
+
+                if (useRegex) {
+                    newContent = originalContent.replace(searchRegex, replaceTerm);
+                } else {
+                    // 普通文本替换
+                    if (caseSensitive) {
+                        newContent = originalContent.replaceAll(searchTerm, replaceTerm);
+                    } else {
+                        // 不区分大小写的普通文本替换需要用正则实现
+                        const flags = 'gi';
+                        const tempRegex = new RegExp(searchTerm.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), flags);
+                        newContent = originalContent.replace(tempRegex, replaceTerm);
+                    }
+                }
+
+                if (originalContent !== newContent) {
+                    await this.app.vault.modify(file, newContent);
+                    modifiedFileCount++;
+                }
+            } catch (error) {
+                console.error(`处理文件 ${file.path} 时出错:`, error);
+            }
+        }
+        
+        const folderDisplayName = folderPath === "/" ? "整个仓库" : `文件夹 "${folderPath}"`;
+        new Notice(`操作完成！\n在 ${folderDisplayName} 中，共修改了 ${modifiedFileCount} 个文件。`, 10000);
+    }
 }
