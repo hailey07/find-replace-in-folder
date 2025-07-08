@@ -1,6 +1,6 @@
 # Find and Replace in Folder for Obsidian
 
-![Plugin Version](https://img.shields.io/badge/version-1.0.0-blue)
+![Plugin Version](https://img.shields.io/badge/version-1.1.0-blue)
 
 这是一个为 [Obsidian.md](https://obsidian.md) 设计的插件，允许用户在一个指定的文件夹内，对所有笔记进行批量的查找和替换操作。
 
