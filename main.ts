@@ -1,86 +1,98 @@
-import { App, Plugin, PluginSettingTab, Setting, Modal, Notice } from 'obsidian';
-import { FindReplaceModal } from './FindReplaceModal'; // 我们将创建这个文件
+// main.ts
+import { App, Plugin, Notice } from 'obsidian';
+import { FindReplaceModal } from './FindReplaceModal';
+import { getLocaleStrings, LocalizedStrings } from './lang';
 
 export default class FindReplaceInFolderPlugin extends Plugin {
+    private t: LocalizedStrings;
 
-	async onload() {
-		// 在左侧功能区添加一个图标
-		this.addRibbonIcon('file-search-2', '批量查找替换', (evt: MouseEvent) => {
-			this.openFindReplaceModal();
-		});
+    async onload() {
+        this.setLanguage();
 
-		// 添加一个命令，可以通过 Ctrl/Cmd + P 调用
-		this.addCommand({
-			id: 'open-find-replace-modal',
-			name: '对文件夹进行批量查找替换',
-			callback: () => {
-				this.openFindReplaceModal();
-			}
-		});
-	}
+        // ======================= 【最终解决方案】 =======================
+        // 1. 我们调用 on() 方法并存储返回的 EventRef 对象。
+        // 2. 我们使用 `as any` 来强制绕过 TypeScript 的类型检查，因为它不知道 'language-change'。
+        const langChangeEventRef = this.app.workspace.on('language-change' as any, () => {
+            this.setLanguage();
+            // 注意: Ribbon 和命令名称需要重启 Obsidian 才能刷新。
+        });
 
-	onunload() {
-		// 插件卸载时需要清理的资源
-	}
+        // 3. 我们使用 this.register() 注册一个【清理函数】。
+        //    当插件卸载时，这个函数会被调用，从而安全地注销我们的事件监听。
+        this.register(() => {
+            this.app.workspace.offref(langChangeEventRef);
+        });
+        // =============================================================
+
+        this.addRibbonIcon('file-search-2', this.t.ribbonTooltip, () => {
+            this.openFindReplaceModal();
+        });
+
+        this.addCommand({
+            id: 'open-find-replace-modal',
+            name: this.t.commandName,
+            callback: () => {
+                this.openFindReplaceModal();
+            }
+        });
+    }
+
+    // unload 函数可以留空，因为 this.register() 已经帮我们处理了所有清理工作。
+    onunload() {}
+
+    setLanguage() {
+        this.t = getLocaleStrings();
+    }
 
     openFindReplaceModal() {
-        new FindReplaceModal(this.app, (result) => {
-            // 这是当用户在 Modal 中点击 "替换" 按钮后执行的回调函数
+        new FindReplaceModal(this.app, this.t, (result) => {
             this.performReplacement(result.folder, result.find, result.replace, result.caseSensitive, result.useRegex);
         }).open();
     }
 
     async performReplacement(folderPath: string, searchTerm: string, replaceTerm: string, caseSensitive: boolean, useRegex: boolean) {
         if (!searchTerm) {
-            new Notice("查找内容不能为空！");
+            new Notice(this.t.errorFindInputEmpty);
             return;
         }
 
-        new Notice("正在开始批量替换...", 3000);
+        new Notice(this.t.infoStarting, 3000);
 
         const allMarkdownFiles = this.app.vault.getMarkdownFiles();
         let filesToProcess;
 
-        if (folderPath === "/") { // 根目录
+        if (folderPath === "/") {
             filesToProcess = allMarkdownFiles;
         } else {
             filesToProcess = allMarkdownFiles.filter(file => file.path.startsWith(folderPath + '/'));
         }
 
+        const folderDisplayName = folderPath === "/" ? (this.t.folderSettingName === '选择文件夹' ? '整个仓库' : 'the entire vault') : folderPath;
+
         if (filesToProcess.length === 0) {
-            new Notice(`在文件夹 "${folderPath}" 中未找到任何 Markdown 文件。`);
+            new Notice(this.t.infoNoFilesFound(folderDisplayName));
             return;
         }
 
         let modifiedFileCount = 0;
-        let searchRegex: RegExp;
 
         try {
+            let searchRegex: RegExp | null = null;
             if (useRegex) {
-                // 如果使用正则，构建正则表达式
-                // 'g' for global, 'i' for case-insensitive
                 const flags = 'g' + (caseSensitive ? '' : 'i');
                 searchRegex = new RegExp(searchTerm, flags);
             }
-        } catch (e) {
-            new Notice("无效的正则表达式: " + e.message);
-            return;
-        }
 
-
-        for (const file of filesToProcess) {
-            try {
+            for (const file of filesToProcess) {
                 const originalContent = await this.app.vault.read(file);
                 let newContent: string;
 
-                if (useRegex) {
+                if (useRegex && searchRegex) {
                     newContent = originalContent.replace(searchRegex, replaceTerm);
                 } else {
-                    // 普通文本替换
                     if (caseSensitive) {
                         newContent = originalContent.replaceAll(searchTerm, replaceTerm);
                     } else {
-                        // 不区分大小写的普通文本替换需要用正则实现
                         const flags = 'gi';
                         const tempRegex = new RegExp(searchTerm.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), flags);
                         newContent = originalContent.replace(tempRegex, replaceTerm);
@@ -91,12 +103,17 @@ export default class FindReplaceInFolderPlugin extends Plugin {
                     await this.app.vault.modify(file, newContent);
                     modifiedFileCount++;
                 }
-            } catch (error) {
-                console.error(`处理文件 ${file.path} 时出错:`, error);
+            }
+            
+            new Notice(this.t.successResults(modifiedFileCount, folderDisplayName), 10000);
+
+        } catch (e) {
+            if (e instanceof SyntaxError) {
+                new Notice(this.t.errorInvalidRegex(e.message));
+            } else {
+                console.error("批量替换时发生未知错误:", e);
+                new Notice("An unknown error occurred during replacement.");
             }
         }
-        
-        const folderDisplayName = folderPath === "/" ? "整个仓库" : `文件夹 "${folderPath}"`;
-        new Notice(`操作完成！\n在 ${folderDisplayName} 中，共修改了 ${modifiedFileCount} 个文件。`, 10000);
     }
 }

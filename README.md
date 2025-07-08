@@ -23,3 +23,11 @@
 4.  插件会对目标文件夹内的所有 `.md` 文件执行操作。
 
 **⚠️ 警告：** 此操作无法撤销，请在操作前务必备份您的仓库。
+
+## 安装
+
+### 手动安装
+
+1.  从 [GitHub Releases](https://github.com/hailey07/find-replace-in-folder) 页面下载最新的 `main.js` 和 `manifest.json` 文件。
+2.  将这两个文件放入你的 Obsidian 仓库的 `.obsidian/plugins/your-plugin-id/` 文件夹中 (例如 `.obsidian/plugins/find-replace-in-folder/`)。
+3.  重启 Obsidian，然后在设置中启用此插件。

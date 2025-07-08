@@ -1,10 +1,10 @@
 {
 	"id": "find-replace-in-folder",
 	"name": "Find and Replace in Folder",
-	"version": "1.0.0",
+	"version": "1.1.0",
 	"minAppVersion": "0.12.0",
 	"description": "在一个指定的文件夹内对所有笔记进行批量查找和替换。",
 	"author": "Hailey",
-	"authorUrl": "https://your-website.com",
+	"authorUrl": "https://github.com/hailey07/find-replace-in-folder",
 	"isDesktopOnly": false
 }
